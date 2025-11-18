@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../services/firestore_service.dart';
+import '../services/auth_service.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -12,6 +11,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
   bool loading = false;
   String status = '';
 
@@ -21,33 +21,20 @@ class _SignupScreenState extends State<SignupScreen> {
       status = '';
     });
 
-    try {
-      // 1) Create user in Firebase Auth
-      UserCredential cred = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+    final error = await _authService.signUp(
+      emailController.text.trim(),
+      passwordController.text.trim(),
+    );
 
-      final user = cred.user;
-      // 2) Save profile to Firestore (if needed)
-      if (user != null) {
-        await FirestoreService().addUserProfile(user.uid, user.email ?? '');
+    if (mounted) {
+      setState(() => loading = false);
+      if (error == null) {
+        // Go to login screen with message
+        Navigator.pushReplacementNamed(context, '/login',
+            arguments: {'message': 'Account created. Check Gmail to verify.'});
+      } else {
+        setState(() => status = error);
       }
-
-      // 3) Sign the user out immediately so they must login
-      await FirebaseAuth.instance.signOut();
-
-      // 4) Navigate back to Login screen with success message
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/login',
-          arguments: {'message': 'Account created. Please sign in.'});
-    } on FirebaseAuthException catch (e) {
-      setState(() => status = e.message ?? 'Signup failed');
-    } catch (e) {
-      setState(() => status = 'Signup failed: $e');
-    } finally {
-      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -79,10 +66,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 const Text(
                   "Sign Up",
                   style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6C63FF),
-                  ),
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6C63FF)),
                 ),
                 const SizedBox(height: 30),
                 TextField(
@@ -91,8 +77,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     labelText: "Email",
                     prefixIcon: const Icon(Icons.person),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -103,8 +88,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     labelText: "Password",
                     prefixIcon: const Icon(Icons.lock),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -117,29 +101,21 @@ class _SignupScreenState extends State<SignupScreen> {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                                borderRadius: BorderRadius.circular(12)),
                             backgroundColor: const Color(0xFF6C63FF),
                           ),
-                          child: const Text(
-                            "Sign Up",
-                            style: TextStyle(fontSize: 18),
-                          ),
+                          child: const Text("Sign Up",
+                              style: TextStyle(fontSize: 18)),
                         ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  status,
-                  style: const TextStyle(color: Colors.red),
-                ),
+                Text(status, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () =>
                       Navigator.pushReplacementNamed(context, '/login'),
-                  child: const Text(
-                    "Already have an account? Login",
-                    style: TextStyle(color: Color(0xFF6C63FF)),
-                  ),
+                  child: const Text("Already have an account? Login",
+                      style: TextStyle(color: Color(0xFF6C63FF))),
                 ),
               ],
             ),

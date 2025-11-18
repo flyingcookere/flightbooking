@@ -1,37 +1,67 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Sign up
-  Future<User?> signUp(String email, String password) async {
+  // SIGN UP
+  Future<String?> signUp(String email, String password) async {
     try {
-      var result = await _auth.createUserWithEmailAndPassword(
-          email: email, password: password);
-      return result.user;
+      UserCredential result = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Send email verification
+      if (result.user != null) {
+        await result.user!.sendEmailVerification();
+      }
+
+      // Save profile to Firestore (optional)
+      await _firestore.collection('users').doc(result.user!.uid).set({
+        'email': email,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Logout immediately to force verification
+      await _auth.signOut();
+
+      return null; // success
+    } on FirebaseAuthException catch (e) {
+      return e.message;
     } catch (e) {
-      print("Signup error: $e");
-      return null;
+      return "Signup failed: $e";
     }
   }
 
-  // Login
-  Future<User?> login(String email, String password) async {
+  // LOGIN
+  Future<String?> login(String email, String password) async {
     try {
-      var result = await _auth.signInWithEmailAndPassword(
+      await _auth.signInWithEmailAndPassword(
           email: email, password: password);
-      return result.user;
+
+      final user = _auth.currentUser;
+      await user?.reload(); // refresh info
+
+      if (user != null && !user.emailVerified) {
+        await _auth.signOut();
+        return "Please verify your email before logging in.";
+      }
+
+      return null; // success
+    } on FirebaseAuthException catch (e) {
+      return e.message;
     } catch (e) {
-      print("Login error: $e");
-      return null;
+      return "Login failed: $e";
     }
   }
 
-  // Logout
+  // LOGOUT
   Future<void> logout() async {
     await _auth.signOut();
   }
 
-  // Get current user
+  // GET CURRENT USER
   User? get currentUser => _auth.currentUser;
 }

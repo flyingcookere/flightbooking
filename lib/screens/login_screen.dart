@@ -12,14 +12,33 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-  String status = "";
+  String status = '';
+  bool loading = false;
+
+  Future<void> _login() async {
+    setState(() => loading = true);
+
+    final error = await _authService.login(
+      emailController.text.trim(),
+      passwordController.text.trim(),
+    );
+
+    if (mounted) {
+      setState(() => loading = false);
+      if (error == null) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        setState(() => status = error);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF6C63FF), // purple background similar to image
+      backgroundColor: const Color(0xFF6C63FF),
       body: Center(
         child: SingleChildScrollView(
           child: Container(
@@ -42,10 +61,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text(
                   "Login",
                   style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6C63FF),
-                  ),
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6C63FF)),
                 ),
                 const SizedBox(height: 30),
                 TextField(
@@ -54,8 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: "Email",
                     prefixIcon: const Icon(Icons.person),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -66,47 +83,34 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: "Password",
                     prefixIcon: const Icon(Icons.lock),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      var user = await _authService.login(
-                        emailController.text,
-                        passwordController.text,
-                      );
-                      if (user != null) {
-                        Navigator.pushReplacementNamed(context, '/home');
-                      } else {
-                        setState(() => status = "Login failed");
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      backgroundColor: const Color(0xFF6C63FF),
-                    ),
-                    child: const Text("Login", style: TextStyle(fontSize: 18)),
-                  ),
+                  child: loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ElevatedButton(
+                          onPressed: _login,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            backgroundColor: const Color(0xFF6C63FF),
+                          ),
+                          child: const Text("Login",
+                              style: TextStyle(fontSize: 18)),
+                        ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  status,
-                  style: const TextStyle(color: Colors.red),
-                ),
+                Text(status, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: () => Navigator.pushReplacementNamed(context, '/signup'),
-                  child: const Text(
-                    "Don't have an account? Sign Up",
-                    style: TextStyle(color: Color(0xFF6C63FF)),
-                  ),
+                  onPressed: () =>
+                      Navigator.pushReplacementNamed(context, '/signup'),
+                  child: const Text("Don't have an account? Sign Up",
+                      style: TextStyle(color: Color(0xFF6C63FF))),
                 ),
               ],
             ),
