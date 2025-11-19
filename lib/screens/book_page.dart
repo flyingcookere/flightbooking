@@ -1,253 +1,85 @@
 import 'package:flutter/material.dart';
-import '../services/firestore_service.dart';
+
+// Import your screens
+import 'book_oneway_page.dart'; 
+import 'book_roundtrip_page.dart';
+import 'book_multicity_page.dart';
 
 class BookPage extends StatefulWidget {
-  const BookPage({Key? key}) : super(key: key);
+  const BookPage({super.key});
 
   @override
-  _BookPageState createState() => _BookPageState();
+  State<BookPage> createState() => _BookPageState();
 }
 
-class _BookPageState extends State<BookPage> {
-  // Booking type
-  String bookingType = 'One Way';
-
-  // Controllers for One Way / Round Trip
-  final TextEditingController fromController = TextEditingController();
-  final TextEditingController toController = TextEditingController();
-  DateTime? departureDate;
-  DateTime? returnDate; // only for round trip
-  int passengers = 1;
-  String flightClass = 'Economy';
-
-  // Multi-City legs
-  List<Map<String, dynamic>> flightLegs = [
-    {'from': '', 'to': '', 'date': DateTime.now()},
+class _BookPageState extends State<BookPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  
+  final List<String> tabTitles = const [
+    'Round Trip', 
+    'One Way',
+    'Multi City',
   ];
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Book Flight')),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Booking type selector
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: () => setState(() => bookingType = 'One Way'),
-                  child: Text('One Way'),
-                ),
-                ElevatedButton(
-                  onPressed: () => setState(() => bookingType = 'Round Trip'),
-                  child: Text('Round Trip'),
-                ),
-                ElevatedButton(
-                  onPressed: () => setState(() => bookingType = 'Multi-City'),
-                  child: Text('Multi-City'),
-                ),
-              ],
-            ),
+  void initState() {
+    super.initState();
+    // Start on 'One Way' (index 1)
+    _tabController = TabController(length: tabTitles.length, vsync: this, initialIndex: 1); 
+  }
 
-            SizedBox(height: 20),
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
-            // Conditional forms
-            if (bookingType == 'One Way') buildOneWayForm(),
-            if (bookingType == 'Round Trip') buildRoundTripForm(),
-            if (bookingType == 'Multi-City') buildMultiCityForm(),
-          ],
+  Widget _buildCustomTabToggle() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(4.0),
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0), 
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: Colors.blue, 
+          borderRadius: BorderRadius.circular(8),
         ),
+        labelColor: Colors.white, 
+        unselectedLabelColor: Colors.blue, 
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+        indicatorSize: TabBarIndicatorSize.tab,
+        tabs: tabTitles.map((title) => Tab(text: title)).toList(),
       ),
     );
   }
 
-  // ---------------------- FORMS ------------------------
-
-  Widget buildOneWayForm() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        children: [
-          TextField(
-            controller: fromController,
-            decoration: InputDecoration(labelText: 'From'),
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _buildCustomTabToggle(),
+        
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // 1. Round Trip
+              const BookRoundTripPage(), 
+              
+              // 2. One Way
+              // 🔥 FIXED: Passed empty string so it starts as "Select"
+              const OneWayBookingPage(route: ''), 
+              
+              // 3. Multi City
+              const BookMultiCityPage(),
+            ],
           ),
-          TextField(
-            controller: toController,
-            decoration: InputDecoration(labelText: 'To'),
-          ),
-          ListTile(
-            title: Text('Departure: ${departureDate != null ? departureDate!.toLocal().toString().split(' ')[0] : 'Select Date'}'),
-            trailing: Icon(Icons.calendar_today),
-            onTap: () async {
-              DateTime? picked = await showDatePicker(
-                  context: context,
-                  initialDate: departureDate ?? DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100));
-              if (picked != null) setState(() => departureDate = picked);
-            },
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Passengers'),
-            keyboardType: TextInputType.number,
-            onChanged: (val) => passengers = int.tryParse(val) ?? 1,
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Class'),
-            onChanged: (val) => flightClass = val,
-          ),
-          SizedBox(height: 10),
-          ElevatedButton(onPressed: bookFlight, child: Text('Book')),
-        ],
-      ),
-    );
-  }
-
-  Widget buildRoundTripForm() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        children: [
-          TextField(controller: fromController, decoration: InputDecoration(labelText: 'From')),
-          TextField(controller: toController, decoration: InputDecoration(labelText: 'To')),
-          ListTile(
-            title: Text('Departure: ${departureDate != null ? departureDate!.toLocal().toString().split(' ')[0] : 'Select Date'}'),
-            trailing: Icon(Icons.calendar_today),
-            onTap: () async {
-              DateTime? picked = await showDatePicker(
-                  context: context,
-                  initialDate: departureDate ?? DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100));
-              if (picked != null) setState(() => departureDate = picked);
-            },
-          ),
-          ListTile(
-            title: Text('Return: ${returnDate != null ? returnDate!.toLocal().toString().split(' ')[0] : 'Select Date'}'),
-            trailing: Icon(Icons.calendar_today),
-            onTap: () async {
-              DateTime? picked = await showDatePicker(
-                  context: context,
-                  initialDate: returnDate ?? DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100));
-              if (picked != null) setState(() => returnDate = picked);
-            },
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Passengers'),
-            keyboardType: TextInputType.number,
-            onChanged: (val) => passengers = int.tryParse(val) ?? 1,
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Class'),
-            onChanged: (val) => flightClass = val,
-          ),
-          SizedBox(height: 10),
-          ElevatedButton(onPressed: bookFlight, child: Text('Book')),
-        ],
-      ),
-    );
-  }
-
-  Widget buildMultiCityForm() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        children: [
-          ListView.builder(
-            shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
-            itemCount: flightLegs.length,
-            itemBuilder: (context, index) {
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    children: [
-                      TextField(
-                        decoration: InputDecoration(labelText: 'From'),
-                        onChanged: (val) => flightLegs[index]['from'] = val,
-                      ),
-                      TextField(
-                        decoration: InputDecoration(labelText: 'To'),
-                        onChanged: (val) => flightLegs[index]['to'] = val,
-                      ),
-                      ListTile(
-                        title: Text('Date: ${flightLegs[index]['date'].toLocal().toString().split(' ')[0]}'),
-                        trailing: Icon(Icons.calendar_today),
-                        onTap: () async {
-                          DateTime? picked = await showDatePicker(
-                              context: context,
-                              initialDate: flightLegs[index]['date'],
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime(2100));
-                          if (picked != null) setState(() => flightLegs[index]['date'] = picked);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          ElevatedButton(
-            onPressed: () => setState(() => flightLegs.add({'from': '', 'to': '', 'date': DateTime.now()})),
-            child: Text('Add Flight Leg'),
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Passengers'),
-            keyboardType: TextInputType.number,
-            onChanged: (val) => passengers = int.tryParse(val) ?? 1,
-          ),
-          TextField(
-            decoration: InputDecoration(labelText: 'Class'),
-            onChanged: (val) => flightClass = val,
-          ),
-          SizedBox(height: 10),
-          ElevatedButton(onPressed: bookFlight, child: Text('Book')),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------- BOOK FUNCTION ------------------------
-  void bookFlight() async {
-    Map<String, dynamic> data = {
-      'type': bookingType,
-      'passengers': passengers,
-      'class': flightClass,
-    };
-
-    if (bookingType == 'One Way') {
-      data.addAll({
-        'from': fromController.text,
-        'to': toController.text,
-        'departureDate': departureDate?.toIso8601String(),
-      });
-    } else if (bookingType == 'Round Trip') {
-      data.addAll({
-        'from': fromController.text,
-        'to': toController.text,
-        'departureDate': departureDate?.toIso8601String(),
-        'returnDate': returnDate?.toIso8601String(),
-      });
-    } else {
-      data['legs'] = flightLegs.map((leg) => {
-        'from': leg['from'],
-        'to': leg['to'],
-        'date': leg['date'].toIso8601String(),
-      }).toList();
-    }
-
-    // Call your Firestore service
-    await FirestoreService().bookFlight(data);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Flight booked successfully!')),
+        ),
+      ],
     );
   }
 }
