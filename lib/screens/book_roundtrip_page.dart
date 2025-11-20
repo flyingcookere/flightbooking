@@ -31,18 +31,56 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
   int maxSeatsAvailableOutbound = 0;
   int maxSeatsAvailableReturn = 0;
   bool _isLoadingFlights = false;
+  
+  // 🔥 Defined _isBooking to prevent errors
   bool _isBooking = false;
+
+  // 🔵 PAYMENT STATE
+  String? paymentMethod;
 
   int get totalPassengers => adultCount + childCount + infantCount + personWithDisabilityCount + ofwCount + seniorCitizenCount;
 
-  // --- NEW: Gets the flight query for a specific leg (outbound or return) ---
+  // --- PAYMENT MODAL ---
+  Future<void> _showPaymentPicker() async {
+    final methods = [
+      'GCash', 'Maya', 'Debit Card', 'Credit Card', 'Cash at Airport'
+    ];
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        height: 350,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Select Payment Method",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Divider(),
+            Expanded(
+              child: ListView(
+                children: methods
+                    .map((m) => ListTile(
+                          title: Text(m),
+                          onTap: () => Navigator.pop(ctx, m),
+                        ))
+                    .toList(),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null) setState(() => paymentMethod = selected);
+  }
+
+  // --- FLIGHT STREAM ---
   Stream<QuerySnapshot> getFlightsStream(String type) {
     String currentOrigin = type == 'outbound' ? originCity ?? 'MNL' : destinationCity ?? 'CEBU';
     String currentDest = type == 'outbound' ? destinationCity ?? 'CEBU' : originCity ?? 'MNL';
     
-    // Safety check: if inputs are missing, return an empty stream that doesn't cause the Null error
     if (originCity == null || destinationCity == null || departureDate == null || returnDate == null) {
-      // FIX: Returning a stream with an empty list instead of null to match type
       return const Stream.empty(); 
     }
     
@@ -59,18 +97,18 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
   Future<void> _pickDepartureDate() async {
     DateTime now = DateTime.now();
     final picked = await showDatePicker(context: context, initialDate: departureDate ?? now, firstDate: now, lastDate: now.add(const Duration(days: 365)));
-    if (picked != null && picked != departureDate) { setState(() { departureDate = picked; if (returnDate != null && returnDate!.isBefore(departureDate!)) { returnDate = departureDate!.add(const Duration(days: 1)); } /* Removed _searchFlights() */ }); }
+    if (picked != null && picked != departureDate) { setState(() { departureDate = picked; if (returnDate != null && returnDate!.isBefore(departureDate!)) { returnDate = departureDate!.add(const Duration(days: 1)); } }); }
   }
   Future<void> _pickReturnDate() async {
     DateTime now = DateTime.now();
     final picked = await showDatePicker(context: context, initialDate: returnDate ?? (departureDate ?? now).add(const Duration(days: 1)), firstDate: departureDate ?? now.add(const Duration(days: 1)), lastDate: now.add(const Duration(days: 365 * 2)));
-    if (picked != null && picked != returnDate) { setState(() { returnDate = picked; /* Removed _searchFlights() */ }); }
+    if (picked != null && picked != returnDate) { setState(() { returnDate = picked; }); }
   }
 
-  // --- PASSENGER PICKER (Simplified, assuming this method is correct) ---
+  // --- PASSENGER PICKER ---
   Future<void> _showPassengerPicker() async {
     int tempAdult = adultCount; int tempChild = childCount; int tempInfant = infantCount; int tempPWD = personWithDisabilityCount; int tempOFW = ofwCount; int tempSenior = seniorCitizenCount;
-    int currentMaxSeats = 99; // Relaxed Max Limit
+    int currentMaxSeats = 99; 
 
     final result = await showModalBottomSheet<Map<String, int>>(
       context: context, isScrollControlled: true,
@@ -87,10 +125,10 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
         ]));
       }),
     );
-    if (result != null) { setState(() { adultCount = result['adult']!; childCount = result['child']!; personWithDisabilityCount = result['pwd']!; infantCount = result['infant']!; ofwCount = result['ofw']!; seniorCitizenCount = result['senior']!; /* Removed _searchFlights() */ }); }
+    if (result != null) { setState(() { adultCount = result['adult']!; childCount = result['child']!; personWithDisabilityCount = result['pwd']!; infantCount = result['infant']!; ofwCount = result['ofw']!; seniorCitizenCount = result['senior']!; }); }
   }
 
-  // --- CLASS PICKER (Assuming this method is correct) ---
+  // --- CLASS PICKER ---
   Future<void> _showClassPicker() async {
     String tempClass = flightClass; final classes = ['All Cabin', 'Economy', 'Comfort', 'Premium Economy', 'Business'];
     final selected = await showModalBottomSheet<String>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx2, setModal) => Container(padding: const EdgeInsets.all(20), height: 350, child: Column(children: [
@@ -98,49 +136,33 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
           Expanded(child: ListView(children: classes.map((c) => RadioListTile(title: Text(c), value: c, groupValue: tempClass, onChanged: (v) => setModal(() => tempClass = v!))).toList())),
           ElevatedButton(onPressed: () => Navigator.pop(ctx, tempClass), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, minimumSize: const Size(double.infinity, 50)), child: const Text('Continue', style: TextStyle(color: Colors.white))),
     ]))));
-    if (selected != null) { setState(() => flightClass = selected); /* Removed _searchFlights() */ }
+    if (selected != null) { setState(() => flightClass = selected); }
   }
 
   // --- CITY PICKER ---
-Future<void> _showCityPicker(bool isOrigin) async {
- // NOTE: The codes are in parentheses
- final cities = ['Manila (MNL)', 'Cebu (CEBU)', 'Davao (DVO)', 'Boracay (MPH)', 'Palawan (PPS)']; 
- final selected = await showModalBottomSheet<String>(
- context: context, 
- builder: (ctx) => Container(
- padding: const EdgeInsets.all(20), height: 300, 
- child: ListView(children: cities.map((c) {
- // Extract the code: finds the substring inside parentheses
- final code = c.substring(c.indexOf('(') + 1, c.indexOf(')'));
- return ListTile(
- title: Text(c), 
- // 🔥 FIX: Now passes the code (e.g., 'MNL') to the rest of the app
- onTap: () => Navigator.pop(ctx, code) 
-);
- }).toList()),
- ),
- );
-
- if (selected != null) { 
- setState(() { 
- if (isOrigin) { originCity = selected; if (destinationCity == originCity) destinationCity = null; } 
- else { destinationCity = selected; } 
- selectedOutboundFlightDocId = null; selectedReturnFlightDocId = null; 
- }); 
- }
- }
+  Future<void> _showCityPicker(bool isOrigin) async {
+    final cityMap = {
+      'Manila (MNL)': 'MNL', 'Cebu (CEBU)': 'CEBU', 'Davao (DVO)': 'DVO', 'Boracay (MPH)': 'MPH',
+      'Palawan (PPS)': 'PPS', 'Bicol (BKO)': 'BKO', 'Zamboanga (ZAM)': 'ZAM', 'Iloilo (ILO)': 'ILO',
+    };
+    final selected = await showModalBottomSheet<String>(context: context, builder: (ctx) => Container(padding: const EdgeInsets.all(20), height: 300, child: ListView(children: cityMap.entries.map((e) => ListTile(title: Text(e.key), onTap: () => Navigator.pop(ctx, e.value))).toList())));
+    if (selected != null) { setState(() { if (isOrigin) { originCity = selected; if (destinationCity == originCity) destinationCity = null; } else { destinationCity = selected; } selectedOutboundFlightDocId = null; selectedReturnFlightDocId = null; paymentMethod = null; }); }
+  }
 
   // --- FLIGHT SELECTION ---
   void selectFlightLeg(String docId, int seats, String type) {
     setState(() {
       if (type == 'outbound') { selectedOutboundFlightDocId = docId; maxSeatsAvailableOutbound = seats; } 
       else { selectedReturnFlightDocId = docId; maxSeatsAvailableReturn = seats; }
+      // Optional: Reset payment when flight selection changes
+      // paymentMethod = null;
     });
   }
 
-  // --- BOOKING LOGIC ---
+  // --- BOOKING LOGIC (UPDATED: FORCES TEXT DATE SAVE) ---
   Future<void> handleRoundTripBooking(String status) async {
-    if (selectedOutboundFlightDocId == null || selectedReturnFlightDocId == null || totalPassengers <= 0) return;
+    if (selectedOutboundFlightDocId == null || selectedReturnFlightDocId == null || totalPassengers <= 0 || paymentMethod == null) return;
+    
     setState(() => _isBooking = true);
 
     final documentPath = 'all-round-trip-schedules';
@@ -155,12 +177,29 @@ Future<void> _showCityPicker(bool isOrigin) async {
         final outData = outSnap.data() as Map<String, dynamic>;
         final retData = retSnap.data() as Map<String, dynamic>;
 
+        // 🔥 CRITICAL FIX: Convert Timestamp to String "YYYY-MM-DD"
+        DateTime outDateRaw = (outData['date'] as Timestamp).toDate();
+        String outDateString = DateFormat('yyyy-MM-dd').format(outDateRaw); // This creates a String!
+
+        DateTime retDateRaw = (retData['date'] as Timestamp).toDate();
+        String retDateString = DateFormat('yyyy-MM-dd').format(retDateRaw); // This creates a String!
+
         double total = ((outData['price'] ?? 0) + (retData['price'] ?? 0)) * totalPassengers;
 
         transaction.set(_firestore.collection('bookings').doc(), {
           "status": status, 
-          "flightType": "Round Trip", "origin": originCity, "destination": destinationCity,
+          "flightType": "Round Trip", 
+          "origin": originCity, 
+          "destination": destinationCity,
+          
+          // 🔵 SAVING AS STRING (Clean Text, No Time)
+          "outboundFlightDate": outDateString,
+          "outboundFlightTime": outData['time'],
+          "returnFlightDate": retDateString,
+          "returnFlightTime": retData['time'],
+
           "totalPassengers": totalPassengers,
+          "paymentMethod": paymentMethod,
           "passengerDetails": {'adult': adultCount, 'child': childCount, 'disability': personWithDisabilityCount, 'infant': infantCount, 'ofw': ofwCount, 'senior': seniorCitizenCount},
           "class": flightClass, "totalPrice": total, "timestamp": FieldValue.serverTimestamp(),
         });
@@ -174,6 +213,7 @@ Future<void> _showCityPicker(bool isOrigin) async {
         originCity=null; destinationCity=null; departureDate=null; returnDate=null;
         adultCount=1; childCount=0; infantCount=0; personWithDisabilityCount=0; ofwCount=0; seniorCitizenCount=0;
         selectedOutboundFlightDocId=null; selectedReturnFlightDocId=null;
+        paymentMethod = null;
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -193,9 +233,7 @@ Future<void> _showCityPicker(bool isOrigin) async {
   Widget _buildSelectionBox({required String label, required String value, required VoidCallback onTap}) {
     return InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))])));
   }
-  // Widget _buildFlightList is now defined below inside the StreamBuilder logic
 
-  // 🔥 IMPLEMENTED: Build the list using the StreamBuilder
   Widget _buildFlightList(String type) {
     if (originCity == null || destinationCity == null || departureDate == null || returnDate == null) {
       return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Select itinerary above.")));
@@ -212,12 +250,10 @@ Future<void> _showCityPicker(bool isOrigin) async {
         
         final allDocs = snapshot.data!.docs;
         
-        // 1. Filter documents by the exact required date
         final filteredDocs = allDocs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           if (data['date'] is Timestamp && requiredDate != null) {
             DateTime flightDate = (data['date'] as Timestamp).toDate();
-            // Compare only year, month, and day
             return flightDate.year == requiredDate.year && 
                    flightDate.month == requiredDate.month && 
                    flightDate.day == requiredDate.day;
@@ -259,17 +295,33 @@ Future<void> _showCityPicker(bool isOrigin) async {
     );
   }
 
-
-  // --- BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
-    bool canProceed = selectedOutboundFlightDocId != null && selectedReturnFlightDocId != null && totalPassengers > 0;
+    bool canProceed = selectedOutboundFlightDocId != null && selectedReturnFlightDocId != null && totalPassengers > 0 && paymentMethod != null;
 
     return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const SizedBox(height: 20),
-        Card(elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), child: Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        
+        // LOCATION CARD with SWAP BUTTON 🔄
+        Card(elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), child: Padding(padding: const EdgeInsets.all(12), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
           Expanded(child: _buildLocationInput(label: 'From', code: originCity, onTap: () => _showCityPicker(true))),
-          const Icon(Icons.swap_horiz, color: Colors.blue),
+          
+          IconButton(
+            icon: const Icon(Icons.swap_horiz, color: Colors.blue),
+            onPressed: () {
+              if (originCity != null && destinationCity != null) {
+                setState(() {
+                  String temp = originCity!;
+                  originCity = destinationCity;
+                  destinationCity = temp;
+                  selectedOutboundFlightDocId = null;
+                  selectedReturnFlightDocId = null;
+                  paymentMethod = null;
+                });
+              }
+            },
+          ),
+
           Expanded(child: _buildLocationInput(label: 'To', code: destinationCity, onTap: () => _showCityPicker(false))),
         ]))),
         const SizedBox(height: 20),
@@ -285,15 +337,36 @@ Future<void> _showCityPicker(bool isOrigin) async {
           Expanded(child: _buildSelectionBox(label: 'Class', value: flightClass, onTap: _showClassPicker)),
         ]))),
         
+        const SizedBox(height: 10),
+
+        // 🔵 PAYMENT METHOD CARD
+        Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: InkWell(
+                onTap: _showPaymentPicker,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(children: [
+                    const Icon(Icons.payment, color: Colors.blue),
+                    const SizedBox(width: 10),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Payment Method", style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                          Text(paymentMethod ?? "Select Payment Method", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        ])
+                  ]),
+                ))),
+        
         const SizedBox(height: 20),
         
-        // Actual StreamBuilder widgets replacing the old placeholder text
         if (originCity != null && destinationCity != null && departureDate != null && returnDate != null) ...[
              const Text('Outbound:', style: TextStyle(fontWeight: FontWeight.bold)),
-             _buildFlightList('outbound'), // Calls the StreamBuilder
+             _buildFlightList('outbound'), 
              const SizedBox(height: 10),
              const Text('Return:', style: TextStyle(fontWeight: FontWeight.bold)),
-             _buildFlightList('return'), // Calls the StreamBuilder
+             _buildFlightList('return'), 
              const SizedBox(height: 20),
         ] else if (_isLoadingFlights) ...[
              const LinearProgressIndicator(),
