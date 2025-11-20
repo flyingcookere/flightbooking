@@ -3,7 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ------------------- USERS -------------------
+  // ==================================================
+  // 1. USER & AUTHENTICATION (EXISTING - KEPT SAFE)
+  // ==================================================
+  
   Future<void> addUserProfile(String uid, String email) async {
     try {
       await _db.collection('users').doc(uid).set({
@@ -17,14 +20,15 @@ class FirestoreService {
     }
   }
 
-  // ------------------- BOOKINGS -------------------
+  // ==================================================
+  // 2. BOOKING FUNCTIONS (UPDATED)
+  // ==================================================
 
   /// Old method: keep for backward compatibility
   Future<void> bookFlightOld(Map<String, dynamic> data, {String? userId}) async {
     try {
       data['createdAt'] = FieldValue.serverTimestamp();
       if (userId != null) data['userId'] = userId;
-
       await _db.collection('bookings').add(data);
       print('Booking saved successfully!');
     } catch (e) {
@@ -33,9 +37,11 @@ class FirestoreService {
     }
   }
 
-  /// New method: named parameters for easy integration with BookPage
+  /// Saves a flight booking (One Way or Round Trip)
+  /// 🔥 UPDATED: Now supports 'status' (reserved/confirmed) and 'price'
   Future<void> bookFlight({
     required String bookingType,
+    required String status, // 'reserved' or 'confirmed'
     String? fromCity,
     String? toCity,
     required DateTime departureDate,
@@ -44,15 +50,18 @@ class FirestoreService {
     required int passengers,
     required String flightClass,
     String? userId,
-    // 👇 ADDED PARAMETER: Detailed breakdown map
     Map<String, int>? detailedPassengers, 
+    double? price, // Added price parameter
   }) async {
     try {
       Map<String, dynamic> data = {
         'type': bookingType,
-        'totalPassengers': passengers, // Use totalPassengers for clarity
+        'status': status, // 👇 Saved here
+        'totalPassengers': passengers,
+        'passengerDetails': detailedPassengers ?? {},
         'class': flightClass,
         'departureDate': departureDate.toIso8601String(),
+        'totalPrice': price ?? 0, // 👇 Saved here
         'createdAt': FieldValue.serverTimestamp(),
       };
 
@@ -67,21 +76,16 @@ class FirestoreService {
               })
           .toList();
       if (userId != null) data['userId'] = userId;
-      
-      // 👇 ADDED LOGIC: Save the detailed breakdown if provided
-      if (detailedPassengers != null) {
-        data['passengerDetails'] = detailedPassengers;
-      }
 
       await _db.collection('bookings').add(data);
-      print('Booking saved successfully!');
+      print('Booking ($status) saved successfully!');
     } catch (e) {
       print('Error saving booking: $e');
       throw e;
     }
   }
 
-  // Optional: Fetch all bookings (for admin or user view)
+  // Fetch bookings for a specific user (For 'My Trips' page)
   Future<List<Map<String, dynamic>>> getBookings({String? userId}) async {
     try {
       Query query = _db.collection('bookings').orderBy('createdAt', descending: true);
@@ -99,21 +103,19 @@ class FirestoreService {
       throw e;
     }
   }
-  
-  // ------------------- AIRPORTS/CITIES -------------------
 
-  // 👇 FIX for the 'getCities' error in book_multicity_page.dart
+  // ==================================================
+  // 3. HELPER DATA (EXISTING - KEPT SAFE)
+  // ==================================================
+
   Future<List<String>> getCities() async {
     // This returns dummy city codes/names for the UI selection
-    // You can replace this with a real Firestore query later.
     return ['MNL', 'CEBU', 'Davao', 'Iloilo', 'Bacolod'];
   }
   
-  // Existing getAirports moved inside the class for clarity
   Future<List<Map<String, dynamic>>> getAirports() async {
     try {
       QuerySnapshot snapshot = await _db.collection('airports').get();
-
       return snapshot.docs.map((doc) {
         return doc.data() as Map<String, dynamic>;
       }).toList();
@@ -122,4 +124,4 @@ class FirestoreService {
       throw e;
     }
   }
-} // End of FirestoreService class
+}

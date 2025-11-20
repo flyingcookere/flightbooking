@@ -12,7 +12,6 @@ class BookRoundTripPage extends StatefulWidget {
 class _BookRoundTripPageState extends State<BookRoundTripPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
-  // --- STATE VARIABLES ---
   String? originCity;
   String? destinationCity;
   DateTime? departureDate;
@@ -27,7 +26,6 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
 
   String flightClass = 'Economy';
 
-  List<Map<String, dynamic>> availableFlights = [];
   String? selectedOutboundFlightDocId;
   String? selectedReturnFlightDocId;
   int maxSeatsAvailableOutbound = 0;
@@ -37,94 +35,102 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
 
   int get totalPassengers => adultCount + childCount + infantCount + personWithDisabilityCount + ofwCount + seniorCitizenCount;
 
+  // --- NEW: Gets the flight query for a specific leg (outbound or return) ---
+  Stream<QuerySnapshot> getFlightsStream(String type) {
+    String currentOrigin = type == 'outbound' ? originCity ?? 'MNL' : destinationCity ?? 'CEBU';
+    String currentDest = type == 'outbound' ? destinationCity ?? 'CEBU' : originCity ?? 'MNL';
+    
+    // Safety check: if inputs are missing, return an empty stream that doesn't cause the Null error
+    if (originCity == null || destinationCity == null || departureDate == null || returnDate == null) {
+      // FIX: Returning a stream with an empty list instead of null to match type
+      return const Stream.empty(); 
+    }
+    
+    String currentRoute = '$currentOrigin-to-$currentDest';
+    
+    return _firestore
+        .collection('flightbooking')
+        .doc('all-round-trip-schedules') 
+        .collection(currentRoute)
+        .snapshots();
+  }
+
   // --- DATE PICKERS ---
   Future<void> _pickDepartureDate() async {
     DateTime now = DateTime.now();
     final picked = await showDatePicker(context: context, initialDate: departureDate ?? now, firstDate: now, lastDate: now.add(const Duration(days: 365)));
-    if (picked != null && picked != departureDate) {
-      setState(() {
-        departureDate = picked;
-        if (returnDate != null && returnDate!.isBefore(departureDate!)) {
-          returnDate = departureDate!.add(const Duration(days: 1));
-        }
-        _searchFlights();
-      });
-    }
+    if (picked != null && picked != departureDate) { setState(() { departureDate = picked; if (returnDate != null && returnDate!.isBefore(departureDate!)) { returnDate = departureDate!.add(const Duration(days: 1)); } /* Removed _searchFlights() */ }); }
   }
-
   Future<void> _pickReturnDate() async {
     DateTime now = DateTime.now();
     final picked = await showDatePicker(context: context, initialDate: returnDate ?? (departureDate ?? now).add(const Duration(days: 1)), firstDate: departureDate ?? now.add(const Duration(days: 1)), lastDate: now.add(const Duration(days: 365 * 2)));
-    if (picked != null && picked != returnDate) { setState(() { returnDate = picked; _searchFlights(); }); }
+    if (picked != null && picked != returnDate) { setState(() { returnDate = picked; /* Removed _searchFlights() */ }); }
   }
 
-  // --- PASSENGER PICKER ---
+  // --- PASSENGER PICKER (Simplified, assuming this method is correct) ---
   Future<void> _showPassengerPicker() async {
-    int tempAdult = adultCount; int tempChild = childCount; int tempInfant = infantCount;
-    int tempPWD = personWithDisabilityCount; int tempOFW = ofwCount; int tempSenior = seniorCitizenCount;
-    int maxTotal = 9; 
+    int tempAdult = adultCount; int tempChild = childCount; int tempInfant = infantCount; int tempPWD = personWithDisabilityCount; int tempOFW = ofwCount; int tempSenior = seniorCitizenCount;
+    int currentMaxSeats = 99; // Relaxed Max Limit
 
     final result = await showModalBottomSheet<Map<String, int>>(
       context: context, isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(builder: (ctx2, setModal) {
         Widget buildRow(String label, String sub, int count, Function(int) onChange) {
           int currentTotal = tempAdult + tempChild + tempInfant + tempPWD + tempOFW + tempSenior;
-          bool isIncDisabled = (maxTotal > 0 && currentTotal >= maxTotal);
-          return Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontWeight: FontWeight.bold)), if(sub.isNotEmpty) Text(sub, style: const TextStyle(color: Colors.grey, fontSize: 12))])),
-              IconButton(onPressed: count <= 0 ? null : () => setModal(() => onChange(count - 1)), icon: Icon(Icons.remove_circle_outline, color: count <= 0 ? Colors.grey : Colors.blue)),
-              SizedBox(width: 20, child: Text('$count', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-              IconButton(onPressed: isIncDisabled ? null : () => setModal(() => onChange(count + 1)), icon: Icon(Icons.add_circle_outline, color: isIncDisabled ? Colors.grey : Colors.blue)),
-          ]));
+          bool isIncDisabled = currentTotal >= currentMaxSeats;
+          return Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontWeight: FontWeight.bold)), if(sub.isNotEmpty) Text(sub, style: const TextStyle(color: Colors.grey, fontSize: 12))])), IconButton(onPressed: count <= 0 ? null : () => setModal(() => onChange(count - 1)), icon: Icon(Icons.remove_circle_outline, color: count <= 0 ? Colors.grey : Colors.blue)), SizedBox(width: 20, child: Text('$count', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))), IconButton(onPressed: isIncDisabled ? null : () => setModal(() => onChange(count + 1)), icon: Icon(Icons.add_circle_outline, color: isIncDisabled ? Colors.grey : Colors.blue))]));
         }
-        return Container(
-          padding: const EdgeInsets.all(20), height: MediaQuery.of(context).size.height * 0.75,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Select Passengers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))]),
-            const Divider(),
-            Expanded(child: SingleChildScrollView(child: Column(children: [
-               buildRow('Adult', '12 y +', tempAdult, (v) => tempAdult = v),
-               buildRow('Child', '2 y - 11 y', tempChild, (v) => tempChild = v),
-               buildRow('Person with Disability', '', tempPWD, (v) => tempPWD = v),
-               buildRow('Infant', '16 d - 23 m', tempInfant, (v) => tempInfant = v),
-               buildRow('Overseas Filipino Worker', '', tempOFW, (v) => tempOFW = v),
-               buildRow('Senior Citizen', '60 y +', tempSenior, (v) => tempSenior = v),
-            ]))),
-            ElevatedButton(onPressed: () {
-               if (tempAdult + tempChild + tempInfant == 0) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("At least one passenger required.")));
-               } else {
-                 Navigator.pop(ctx, {'adult': tempAdult, 'child': tempChild, 'pwd': tempPWD, 'infant': tempInfant, 'ofw': tempOFW, 'senior': tempSenior});
-               }
-            }, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(vertical: 16)), child: const Text('Continue', style: TextStyle(color: Colors.white)))
-          ]),
-        );
+        return Container(padding: const EdgeInsets.all(20), height: 400, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Select Passengers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))]), const Divider(),
+          Expanded(child: SingleChildScrollView(child: Column(children: [ buildRow('Adult', '12y+', tempAdult, (v) => tempAdult = v), buildRow('Child', '2y-11y', tempChild, (v) => tempChild = v), buildRow('Person with Disability', '', tempPWD, (v) => tempPWD = v), buildRow('Infant', '16d-23m', tempInfant, (v) => tempInfant = v), buildRow('Overseas Filipino Worker', '', tempOFW, (v) => tempOFW = v), buildRow('Senior Citizen', '60y+', tempSenior, (v) => tempSenior = v) ]))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, {'adult': tempAdult, 'child': tempChild, 'pwd': tempPWD, 'infant': tempInfant, 'ofw': tempOFW, 'senior': tempSenior}), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, minimumSize: const Size(double.infinity, 50)), child: const Text('Continue', style: TextStyle(color: Colors.white)))
+        ]));
       }),
     );
-    if (result != null) { setState(() { adultCount = result['adult']!; childCount = result['child']!; personWithDisabilityCount = result['pwd']!; infantCount = result['infant']!; ofwCount = result['ofw']!; seniorCitizenCount = result['senior']!; _searchFlights(); }); }
+    if (result != null) { setState(() { adultCount = result['adult']!; childCount = result['child']!; personWithDisabilityCount = result['pwd']!; infantCount = result['infant']!; ofwCount = result['ofw']!; seniorCitizenCount = result['senior']!; /* Removed _searchFlights() */ }); }
   }
 
-  // --- CLASS PICKER ---
+  // --- CLASS PICKER (Assuming this method is correct) ---
   Future<void> _showClassPicker() async {
-    String tempClass = flightClass;
-    final classes = ['All Cabin', 'Economy', 'Comfort', 'Premium Economy', 'Business'];
+    String tempClass = flightClass; final classes = ['All Cabin', 'Economy', 'Comfort', 'Premium Economy', 'Business'];
     final selected = await showModalBottomSheet<String>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx2, setModal) => Container(padding: const EdgeInsets.all(20), height: 350, child: Column(children: [
           const Text('Select Cabin', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const Divider(),
           Expanded(child: ListView(children: classes.map((c) => RadioListTile(title: Text(c), value: c, groupValue: tempClass, onChanged: (v) => setModal(() => tempClass = v!))).toList())),
           ElevatedButton(onPressed: () => Navigator.pop(ctx, tempClass), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, minimumSize: const Size(double.infinity, 50)), child: const Text('Continue', style: TextStyle(color: Colors.white))),
     ]))));
-    if (selected != null) { setState(() => flightClass = selected); _searchFlights(); }
+    if (selected != null) { setState(() => flightClass = selected); /* Removed _searchFlights() */ }
   }
 
-  // --- SEARCH LOGIC ---
-  Future<void> _searchFlights() async {
-    if (originCity == null || destinationCity == null || departureDate == null || returnDate == null) { setState(() { availableFlights = []; }); return; }
-    setState(() { _isLoadingFlights = true; availableFlights = []; });
-    // Simulate Search delay (Replace with real query)
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() { _isLoadingFlights = false; });
-  }
+  // --- CITY PICKER ---
+Future<void> _showCityPicker(bool isOrigin) async {
+ // NOTE: The codes are in parentheses
+ final cities = ['Manila (MNL)', 'Cebu (CEBU)', 'Davao (DVO)', 'Boracay (MPH)', 'Palawan (PPS)']; 
+ final selected = await showModalBottomSheet<String>(
+ context: context, 
+ builder: (ctx) => Container(
+ padding: const EdgeInsets.all(20), height: 300, 
+ child: ListView(children: cities.map((c) {
+ // Extract the code: finds the substring inside parentheses
+ final code = c.substring(c.indexOf('(') + 1, c.indexOf(')'));
+ return ListTile(
+ title: Text(c), 
+ // 🔥 FIX: Now passes the code (e.g., 'MNL') to the rest of the app
+ onTap: () => Navigator.pop(ctx, code) 
+);
+ }).toList()),
+ ),
+ );
 
+ if (selected != null) { 
+ setState(() { 
+ if (isOrigin) { originCity = selected; if (destinationCity == originCity) destinationCity = null; } 
+ else { destinationCity = selected; } 
+ selectedOutboundFlightDocId = null; selectedReturnFlightDocId = null; 
+ }); 
+ }
+ }
+
+  // --- FLIGHT SELECTION ---
   void selectFlightLeg(String docId, int seats, String type) {
     setState(() {
       if (type == 'outbound') { selectedOutboundFlightDocId = docId; maxSeatsAvailableOutbound = seats; } 
@@ -133,51 +139,131 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
   }
 
   // --- BOOKING LOGIC ---
-  Future<void> bookRoundTrip() async {
+  Future<void> handleRoundTripBooking(String status) async {
     if (selectedOutboundFlightDocId == null || selectedReturnFlightDocId == null || totalPassengers <= 0) return;
     setState(() => _isBooking = true);
-    // ... (Firebase logic here, omitted for brevity but assumed present in your setup)
-    await Future.delayed(const Duration(seconds: 2)); // Simulating booking
-    setState(() => _isBooking = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Booking Successful (Simulation)!")));
+
+    final documentPath = 'all-round-trip-schedules';
+    final outboundRef = _firestore.collection('flightbooking').doc(documentPath).collection('$originCity-to-$destinationCity').doc(selectedOutboundFlightDocId);
+    final returnRef = _firestore.collection('flightbooking').doc(documentPath).collection('$destinationCity-to-$originCity').doc(selectedReturnFlightDocId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final outSnap = await transaction.get(outboundRef);
+        final retSnap = await transaction.get(returnRef);
+        if (!outSnap.exists || !retSnap.exists) throw Exception("Flights not found");
+        final outData = outSnap.data() as Map<String, dynamic>;
+        final retData = retSnap.data() as Map<String, dynamic>;
+
+        double total = ((outData['price'] ?? 0) + (retData['price'] ?? 0)) * totalPassengers;
+
+        transaction.set(_firestore.collection('bookings').doc(), {
+          "status": status, 
+          "flightType": "Round Trip", "origin": originCity, "destination": destinationCity,
+          "totalPassengers": totalPassengers,
+          "passengerDetails": {'adult': adultCount, 'child': childCount, 'disability': personWithDisabilityCount, 'infant': infantCount, 'ofw': ofwCount, 'senior': seniorCitizenCount},
+          "class": flightClass, "totalPrice": total, "timestamp": FieldValue.serverTimestamp(),
+        });
+        transaction.update(outboundRef, {"seatAvailable": outData['seatAvailable'] - totalPassengers});
+        transaction.update(returnRef, {"seatAvailable": retData['seatAvailable'] - totalPassengers});
+      });
+
+      String msg = status == 'confirmed' ? "Round Trip Booked!" : "Round Trip Reserved!";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      setState(() { 
+        originCity=null; destinationCity=null; departureDate=null; returnDate=null;
+        adultCount=1; childCount=0; infantCount=0; personWithDisabilityCount=0; ofwCount=0; seniorCitizenCount=0;
+        selectedOutboundFlightDocId=null; selectedReturnFlightDocId=null;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      setState(() => _isBooking = false);
+    }
   }
 
-  // --- UI Helpers ---
-  Future<void> _showCityPicker(bool isOrigin) async {
-    final cities = ['Manila (MNL)', 'Cebu (CEB)', 'Davao (DVO)', 'Boracay (MPH)', 'Palawan (PPS)']; 
-    final selected = await showModalBottomSheet<String>(context: context, builder: (ctx) => Container(padding: const EdgeInsets.all(20), height: 300, child: ListView(children: cities.map((c) => ListTile(title: Text(c), onTap: () => Navigator.pop(ctx, c.split(' ')[0]))).toList())));
-    if (selected != null) { setState(() { if (isOrigin) { originCity = selected; if (destinationCity == originCity) destinationCity = null; } else { destinationCity = selected; } selectedOutboundFlightDocId = null; selectedReturnFlightDocId = null; availableFlights = []; _searchFlights(); }); }
-  }
-
+  // --- UI HELPERS ---
   Widget _buildLocationInput({required String label, required String? code, required VoidCallback onTap}) {
-    return InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 4),
-      Text(code ?? 'Select', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: code == null ? Colors.grey : Colors.blue)),
-    ])));
+    return InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 4), Text(code ?? 'Select', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: code == null ? Colors.grey : Colors.blue))])));
   }
-  
   Widget _buildDateInput({required String label, required DateTime? date, required VoidCallback onTap}) {
-      final day = date != null ? DateFormat('dd').format(date) : '--';
-      final month = date != null ? DateFormat('MMM yyyy').format(date) : 'Select Date';
-      return InkWell(onTap: onTap, child: Card(elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 4),
-        Row(children: [Text(day, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)), const SizedBox(width: 12), Text(month, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600))]),
-      ]))));
+    final day = date != null ? DateFormat('dd').format(date) : '--'; final month = date != null ? DateFormat('MMM yyyy').format(date) : 'Select Date';
+    return InkWell(onTap: onTap, child: Card(elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 4), Row(children: [Text(day, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)), const SizedBox(width: 12), Text(month, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600))])]))));
   }
-
   Widget _buildSelectionBox({required String label, required String value, required VoidCallback onTap}) {
-    return InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    ])));
+    return InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))])));
   }
+  // Widget _buildFlightList is now defined below inside the StreamBuilder logic
 
+  // 🔥 IMPLEMENTED: Build the list using the StreamBuilder
   Widget _buildFlightList(String type) {
-     return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No flights found (Demo Mode)")));
+    if (originCity == null || destinationCity == null || departureDate == null || returnDate == null) {
+      return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Select itinerary above.")));
+    }
+    
+    String selectedDocId = type == 'outbound' ? selectedOutboundFlightDocId ?? '' : selectedReturnFlightDocId ?? '';
+    DateTime? requiredDate = type == 'outbound' ? departureDate : returnDate;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: getFlightsStream(type),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Padding(padding: EdgeInsets.all(20), child: Text("No flights found for this route."));
+        
+        final allDocs = snapshot.data!.docs;
+        
+        // 1. Filter documents by the exact required date
+        final filteredDocs = allDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['date'] is Timestamp && requiredDate != null) {
+            DateTime flightDate = (data['date'] as Timestamp).toDate();
+            // Compare only year, month, and day
+            return flightDate.year == requiredDate.year && 
+                   flightDate.month == requiredDate.month && 
+                   flightDate.day == requiredDate.day;
+          }
+          return false;
+        }).toList();
+
+        if (filteredDocs.isEmpty) {
+          return Padding(padding: const EdgeInsets.all(20), child: Text("No flights found for the selected ${type} date."));
+        }
+        
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: filteredDocs.length,
+          itemBuilder: (ctx, i) {
+            final doc = filteredDocs[i];
+            final data = doc.data() as Map<String, dynamic>;
+            bool isSel = doc.id == selectedDocId;
+            double price = (data['price'] ?? 0).toDouble();
+            int seats = data['seatAvailable'] ?? 0;
+            
+            return Card(
+              color: isSel ? Colors.blue.shade50 : Colors.white, 
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: isSel ? Colors.blue : Colors.transparent), 
+                borderRadius: BorderRadius.circular(10)
+              ), 
+              child: ListTile(
+                onTap: () => selectFlightLeg(doc.id, seats, type),
+                title: Text("${data['time']} - ₱${price.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text("Seats: $seats"),
+                trailing: isSel ? const Icon(Icons.check_circle, color: Colors.blue) : const Text("Select"),
+              )
+            );
+          },
+        );
+      },
+    );
   }
 
+
+  // --- BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
-    bool canBook = selectedOutboundFlightDocId != null && selectedReturnFlightDocId != null && totalPassengers > 0;
+    bool canProceed = selectedOutboundFlightDocId != null && selectedReturnFlightDocId != null && totalPassengers > 0;
 
     return SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const SizedBox(height: 20),
@@ -200,25 +286,33 @@ class _BookRoundTripPageState extends State<BookRoundTripPage> {
         ]))),
         
         const SizedBox(height: 20),
-        if ((originCity != null && destinationCity != null && departureDate != null && returnDate != null) || _isLoadingFlights) ...[
-            const Text('Available Flights:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), // Consistent Header
-            const Divider(),
-            const Text('Outbound:', style: TextStyle(fontWeight: FontWeight.bold)), _buildFlightList('outbound'),
-            const SizedBox(height: 10),
-            const Text('Return:', style: TextStyle(fontWeight: FontWeight.bold)), _buildFlightList('return'),
-            const SizedBox(height: 20),
+        
+        // Actual StreamBuilder widgets replacing the old placeholder text
+        if (originCity != null && destinationCity != null && departureDate != null && returnDate != null) ...[
+             const Text('Outbound:', style: TextStyle(fontWeight: FontWeight.bold)),
+             _buildFlightList('outbound'), // Calls the StreamBuilder
+             const SizedBox(height: 10),
+             const Text('Return:', style: TextStyle(fontWeight: FontWeight.bold)),
+             _buildFlightList('return'), // Calls the StreamBuilder
+             const SizedBox(height: 20),
+        ] else if (_isLoadingFlights) ...[
+             const LinearProgressIndicator(),
         ],
-        ElevatedButton(
-          onPressed: canBook && !_isBooking ? bookRoundTrip : null, 
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue, 
-            disabledBackgroundColor: Colors.grey.shade300,
-            padding: const EdgeInsets.symmetric(vertical: 16), 
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            minimumSize: const Size(double.infinity, 50),
-          ), 
-          child: _isBooking ? const CircularProgressIndicator(color: Colors.white) : const Text("BOOK ROUND TRIP", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))
-        ),
+        
+        Row(children: [
+              Expanded(child: OutlinedButton(
+                  onPressed: (canProceed && !_isBooking) ? () => handleRoundTripBooking('reserved') : null,
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), side: const BorderSide(color: Colors.blue, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  child: _isBooking ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator()) : const Text("RESERVE", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+             )),
+             const SizedBox(width: 16),
+              Expanded(child: ElevatedButton(
+                  onPressed: (canProceed && !_isBooking) ? () => handleRoundTripBooking('confirmed') : null,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, disabledBackgroundColor: Colors.grey.shade300, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 5),
+                  child: _isBooking ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white)) : const Text("BOOK NOW", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+             )),
+        ]),
+        const SizedBox(height: 20),
     ]));
   }
 }

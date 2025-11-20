@@ -4,7 +4,7 @@ import 'home_page.dart';
 import 'my_trips_page.dart';
 import 'book_page.dart';
 import 'profile_page.dart';
-
+import 'db_seeder.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -23,29 +23,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       
-      // --- APP BAR: STYLED TO MATCH REFERENCE PHOTO ---
+      // --- APP BAR ---
       appBar: AppBar(
-        // Set background to dark blue
         backgroundColor: Colors.blue.shade800, 
-        // Set foreground (icons, title) to white
         foregroundColor: Colors.white, 
-        // Align title to the left
         centerTitle: false, 
-        // Remove shadow
         elevation: 0, 
         title: Text(
-          // Updated title logic to use "Book Flights" and a bolder style
           _currentIndex == 0
               ? "Discover"
               : _currentIndex == 1
                   ? "My Trips"
                   : _currentIndex == 2
-                      ? "Book Flights" // Updated title for the booking page
+                      ? "Book Flights"
                       : "Profile",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
         actions: [
-          // Add search icon, only visible on the 'Book Flights' tab (Index 2)
           if (_currentIndex == 2)
             const Padding(
               padding: EdgeInsets.only(right: 16.0),
@@ -56,38 +50,52 @@ class _HomeScreenState extends State<HomeScreen> {
       
       body: _buildBody(userEmail),
       
-      // --- BOTTOM NAVIGATION BAR: STYLED TO MATCH REFERENCE PHOTO ---
+      // --- BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
         selectedItemColor: Colors.blue,
-        // Use a slightly darker grey to better match the visual style
         unselectedItemColor: Colors.grey.shade600, 
         type: BottomNavigationBarType.fixed,
-        // Ensure labels are visible for all items
         showUnselectedLabels: true, 
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined), // Use outlined icons for unselected state
+            icon: Icon(Icons.home_outlined),
             activeIcon: Icon(Icons.home),
             label: "Home",
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.luggage_outlined), // More suitable icon for "My Trips"
+            icon: Icon(Icons.luggage_outlined),
             activeIcon: Icon(Icons.luggage),
-            label: "My Trip", // Consistent label
+            label: "My Trip",
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.flight_takeoff_outlined), // Airplane icon for booking
+            icon: Icon(Icons.flight_takeoff_outlined),
             activeIcon: Icon(Icons.flight_takeoff),
-            label: "Book Flight", // Updated label
+            label: "Book Flight",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
-            label: "Profile", // Consistent label
+            label: "Profile",
           ),
         ],
+      ),
+
+      // 🔥 HERE IS THE RED BUTTON (Added after BottomNavigationBar) 🔥
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.red, 
+        child: const Icon(Icons.cloud_upload),
+        onPressed: () async {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Seeding Database...")));
+            
+            // This calls the "Robot" script to fill your database
+            DatabaseSeeder seeder = DatabaseSeeder();
+            await seeder.seedAirports(); 
+            await seeder.seedFlights();  
+            
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Database Done! Now delete this button.")));
+        },
       ),
     );
   }

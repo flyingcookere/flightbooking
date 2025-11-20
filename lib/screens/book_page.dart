@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 // Import your screens
 import 'book_oneway_page.dart'; 
 import 'book_roundtrip_page.dart';
-import 'book_multicity_page.dart';
 
 class BookPage extends StatefulWidget {
   const BookPage({super.key});
@@ -15,15 +14,16 @@ class BookPage extends StatefulWidget {
 class _BookPageState extends State<BookPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   
+  // 1. Removed 'Multi City'
   final List<String> tabTitles = const [
     'Round Trip', 
     'One Way',
-    'Multi City',
   ];
 
   @override
   void initState() {
     super.initState();
+    // Length is now 2
     // Start on 'One Way' (index 1)
     _tabController = TabController(length: tabTitles.length, vsync: this, initialIndex: 1); 
   }
@@ -66,16 +66,13 @@ class _BookPageState extends State<BookPage> with SingleTickerProviderStateMixin
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            children: [
+            // 2. Removed the Multi City page entry, leaving only two children
+            children: const [ 
               // 1. Round Trip
-              const BookRoundTripPage(), 
+              BookRoundTripPage(), 
               
               // 2. One Way
-              // 🔥 FIXED: Passed empty string so it starts as "Select"
-              const OneWayBookingPage(route: ''), 
-              
-              // 3. Multi City
-              const BookMultiCityPage(),
+              OneWayBookingPage(route: ''), 
             ],
           ),
         ),
