@@ -21,7 +21,7 @@ class DatabaseSeeder {
  'displayName': '${airport['city']} (${airport['code']})',
  });
  }
- print("✅ Airports added!");
+ print("Airports added!");
  }
 
  // 2. Seed Flights (For the booking list)
@@ -51,7 +51,7 @@ class DatabaseSeeder {
 
  // 1. Seed One-Way flights (FIXED PATH)
  await _db
- .collection('flightbooking')
+ .collection('bookings')
  .doc('all-one-way-schedules') // Correct Document ID
  .collection(collectionPath) 
  .add({
@@ -67,7 +67,7 @@ class DatabaseSeeder {
  
  // 2. Seed Round-Trip flights (FIXED PATH)
 await _db
- .collection('flightbooking')
+ .collection('bookings')
  .doc('all-round-trip-schedules') // Correct Document ID
  .collection(collectionPath) 
  .add({
@@ -83,6 +83,6 @@ await _db
  }
  }
  }
- print("✅ Flights for next 7 days added!");
+ print("Flights for next 7 days added!");
  }
 }
