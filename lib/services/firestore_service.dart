@@ -124,4 +124,18 @@ class FirestoreService {
       throw e;
     }
   }
+  Stream<QuerySnapshot<Map<String, dynamic>>> getUserBookings(String userId) {
+  return _db
+      .collection('bookings')
+      .where('userId', isEqualTo: userId)
+      .orderBy('departureDate')
+      .snapshots();
+}
+  
+  // NEW: real-time stream of bookings for a specific user
+    Stream<QuerySnapshot<Map<String, dynamic>>> getAllBookings() {
+    return _db.collection('bookings')
+      .orderBy('timestamp', descending: false)
+      .snapshots();
+  }
 }
