@@ -1,15 +1,6 @@
 import 'package:flutter/material.dart';
-
-// Import your screens
 import 'book_oneway_page.dart'; 
 import 'book_roundtrip_page.dart';
-
-class BookPage extends StatefulWidget {
-  const BookPage({super.key});
-
-  @override
-  State<BookPage> createState() => _BookPageState();
-}
 
 class _BookPageState extends State<BookPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
@@ -73,10 +64,17 @@ class _BookPageState extends State<BookPage> with SingleTickerProviderStateMixin
               
               // 2. One Way
               OneWayBookingPage(route: ''), 
-            ],
+            ],  
           ),
         ),
       ],
     );
   }
+}
+
+class BookPage extends StatefulWidget {
+  const BookPage({super.key});
+
+  @override
+  State<BookPage> createState() => _BookPageState();
 }

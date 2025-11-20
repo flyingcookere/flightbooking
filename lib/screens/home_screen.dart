@@ -94,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
             await seeder.seedAirports(); 
             await seeder.seedFlights();  
             
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Database Done! Now delete this button.")));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Database Done! Now delete this button.")));
         },
       ),
     );
